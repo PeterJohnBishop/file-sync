@@ -1,6 +1,7 @@
 package server
 
 import (
+	"file-sync/server/websocket"
 	"fmt"
 	"log"
 	"os"
@@ -37,11 +38,20 @@ func ServeGin() {
 		MaxAge:        12 * time.Hour,
 	}))
 
-	r.GET("/ws", func(c *gin.Context) {
-		// upgrader here
+	hub := websocket.NewHub()
+	go hub.Run()
+
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"identity": "File-Sync",
+		})
 	})
 
-	log.Printf("Serving Gin at ")
+	r.GET("/ws", func(c *gin.Context) {
+		websocket.ServeWs(hub, c)
+	})
+
 	svr := fmt.Sprintf("%s:%s", host, port)
+	log.Printf("Serving Gin at %s", svr)
 	r.Run(svr)
 }
