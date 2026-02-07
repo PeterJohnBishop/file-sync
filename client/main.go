@@ -33,7 +33,7 @@ func main() {
 
 	header := make(http.Header)
 	header.Add("X-Client-Id", id)
-	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8080", Path: "/ws"}
+	u := url.URL{Scheme: "ws", Host: "10.0.0.177:8080", Path: "/ws"}
 	go func() {
 		const maxAttempts = 3
 		const totalRetryDuration = 10 * time.Second
