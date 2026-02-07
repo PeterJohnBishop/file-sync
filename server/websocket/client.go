@@ -28,24 +28,10 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
-	// CheckOrigin: func(r *http.Request) bool {
-	// 	origin := r.Header.Get("Origin")
-
-	// 	if origin == "" {
-	// 		return true
-	// 	}
-
-	// 	if strings.HasPrefix(origin, "http://localhost") ||
-	// 		strings.HasPrefix(origin, "http://127.0.0.1") ||
-	// 		origin == "https://github.com" {
-	// 		return true
-	// 	}
-
-	// 	return false
-	// },
 }
 
 type Client struct {
+	id   string
 	hub  *Hub
 	conn *websocket.Conn
 	send chan []byte
@@ -96,7 +82,7 @@ func (c *Client) writePump() {
 			}
 			w.Write(message)
 
-			// Add queued chat messages to the current websocket message.
+			// Add new line between sends
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
@@ -116,12 +102,17 @@ func (c *Client) writePump() {
 }
 
 func ServeWs(hub *Hub, c *gin.Context) {
+	id := c.GetHeader("X-Client-Id")
+	if id == "" {
+		log.Println("Client ID is missing!")
+		return
+	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{id: id, hub: hub, conn: conn, send: make(chan []byte, 256)}
 	client.hub.register <- client
 
 	go client.writePump()
