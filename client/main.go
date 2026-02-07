@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -29,36 +30,52 @@ func GenerateID(length int) (string, error) {
 func main() {
 	id, _ := GenerateID(8)
 	r := gin.Default()
-	r.GET("/connect", func(c *gin.Context) {
-		header := make(http.Header)
-		header.Add("X-Client-Id", id)
 
-		u := url.URL{Scheme: "ws", Host: "0.0.0.0:8080", Path: "/ws"}
-		log.Printf("connecting to %s", u.String())
+	header := make(http.Header)
+	header.Add("X-Client-Id", id)
+	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8080", Path: "/ws"}
+	go func() {
+		const maxAttempts = 3
+		const totalRetryDuration = 10 * time.Second
+		const retryInterval = totalRetryDuration / (maxAttempts - 1)
 
-		conn, _, err := websocket.DefaultDialer.Dial(u.String(), header)
-		if err != nil {
-			log.Fatal("dial_error:", err)
-			c.JSON(500, gin.H{"error": "Failed to connect"})
-			return
+		var conn *websocket.Conn
+		var err error
+
+		for i := 1; i <= maxAttempts; i++ {
+			log.Printf("[WS] Attempt %d: connecting to %s", i, u.String())
+			conn, _, err = websocket.DefaultDialer.Dial(u.String(), header)
+			if err == nil {
+				log.Printf("[WS] Successfully connected on attempt %d", i)
+				break
+			}
+
+			if i < maxAttempts {
+				log.Printf("[WS] Attempt %d failed. Retrying in %v...", i, retryInterval)
+				time.Sleep(retryInterval)
+			} else {
+				log.Fatalf("[WS] Critical Error: Failed to connect after %d attempts: %v", i, err)
+			}
 		}
 
 		defer conn.Close()
+
 		msg := fmt.Sprintf("%s connected.", id)
-		err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
-		if err != nil {
-			log.Println("write_error:", err)
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
+			log.Printf("[WS] write_error: %v", err)
 			return
 		}
 
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Println("read_error:", err)
-			return
+		log.Printf("[WS] Entering listen loop...")
+		for {
+			messageType, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("[WS] read_error (connection likely closed): %v", err)
+				return
+			}
+			log.Printf("[WS] received from server: %s (Type: %d)", message, messageType)
 		}
-
-		c.JSON(200, gin.H{"server_response": string(message)})
-	})
+	}()
 
 	r.Run(":3000")
 }
