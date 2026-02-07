@@ -103,7 +103,7 @@ func confirmConnection(conn *websocket.Conn, id string) {
 	}
 
 	envelope := WSMsg{
-		Event:   "connection_open",
+		Event:   "connection_opened",
 		Payload: payloadBytes,
 	}
 
