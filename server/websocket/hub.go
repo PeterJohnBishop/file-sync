@@ -1,5 +1,11 @@
 package websocket
 
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
 type Hub struct {
 	clients map[*Client]bool
 
@@ -11,6 +17,58 @@ type Hub struct {
 
 	// Unregister requests from clients.
 	unregister chan *Client
+}
+
+type WSMsg struct {
+	Event   string          `json:"event"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type ConnectPayload struct {
+	Id string `json:"id"`
+}
+
+type CommMsgPayload struct {
+	Id      string `json:"id"`
+	Message string `json:"message"`
+}
+
+func (h *Hub) handleMessage(msg []byte) {
+	var envelope WSMsg
+	if err := json.Unmarshal(msg, &envelope); err != nil {
+		log.Println("Error parsing envelope:", err)
+		return
+	}
+
+	switch envelope.Event {
+	case "connection_opened":
+		var p ConnectPayload
+		if err := json.Unmarshal(envelope.Payload, &p); err != nil {
+			log.Println("Bad connect payload:", err)
+			return
+		}
+		fmt.Printf("Action: Client %s confirmed connection.\n", p.Id)
+
+	case "communication":
+		var p CommMsgPayload
+		if err := json.Unmarshal(envelope.Payload, &p); err != nil {
+			log.Println("Bad communication payload:", err)
+			return
+		}
+
+		for client := range h.clients {
+			select {
+			case client.send <- msg:
+			default:
+				close(client.send)
+				delete(h.clients, client)
+			}
+		}
+		fmt.Printf("Action: Broadcast message from %s: %s\n", p.Id, p.Message)
+
+	default:
+		log.Printf("Unknown event type: %s\n", envelope.Event)
+	}
 }
 
 func NewHub() *Hub {
@@ -27,20 +85,15 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.clients[client] = true
+
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
 			}
+
 		case message := <-h.broadcast:
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
-				}
-			}
+			h.handleMessage(message)
 		}
 	}
 }

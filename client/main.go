@@ -2,7 +2,7 @@ package main
 
 import (
 	"crypto/rand"
-	"fmt"
+	"encoding/json"
 	"log"
 	"math/big"
 	"net/http"
@@ -12,6 +12,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
+
+type WSMsg struct {
+	Event   string          `json:"event"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type ConnectPayload struct {
+	Id string `json:"id"`
+}
+
+type CommMsgPayload struct {
+	Id      string `json:"id"`
+	Message string `json:"message"`
+}
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -60,11 +74,7 @@ func main() {
 
 		defer conn.Close()
 
-		msg := fmt.Sprintf("%s connected.", id)
-		if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
-			log.Printf("[WS] write_error: %v", err)
-			return
-		}
+		confirmConnection(conn, id)
 
 		log.Printf("[WS] Entering listen loop...")
 		for {
@@ -78,4 +88,33 @@ func main() {
 	}()
 
 	r.Run(":3000")
+}
+
+func confirmConnection(conn *websocket.Conn, id string) {
+
+	p := ConnectPayload{
+		Id: id,
+	}
+
+	payloadBytes, err := json.Marshal(p)
+	if err != nil {
+		log.Printf("[WS] payload_marshal_error: %v", err)
+		return
+	}
+
+	envelope := WSMsg{
+		Event:   "connection_open",
+		Payload: payloadBytes,
+	}
+
+	finalMsg, err := json.Marshal(envelope)
+	if err != nil {
+		log.Printf("[WS] envelope_marshal_error: %v", err)
+		return
+	}
+
+	if err := conn.WriteMessage(websocket.TextMessage, finalMsg); err != nil {
+		log.Printf("[WS] write_error: %v", err)
+		return
+	}
 }
