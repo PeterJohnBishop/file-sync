@@ -1,6 +1,7 @@
 package server
 
 import (
+	"file-sync/server/watcher"
 	"file-sync/server/websocket"
 	"fmt"
 	"log"
@@ -50,6 +51,8 @@ func ServeGin() {
 	r.GET("/ws", func(c *gin.Context) {
 		websocket.ServeWs(hub, c)
 	})
+
+	go watcher.Watch()
 
 	svr := fmt.Sprintf("%s:%s", host, port)
 	log.Printf("Serving Gin at %s", svr)
